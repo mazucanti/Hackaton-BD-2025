@@ -1,3 +1,7 @@
+# local files
+*.parquet
+my_own.ipynb
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
