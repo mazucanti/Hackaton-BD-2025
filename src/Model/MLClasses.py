@@ -1,21 +1,25 @@
-from DataClasses import GenericData
+import polars as pl
+import polars.selectors as cs
+import numpy as np
+
+from src.Model.DataClasses import GenericData
 from sklearn.cluster import DBSCAN
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import PowerTransformer, OrdinalEncoder, StandardScaler
 
 class MLModel:
     input_data: GenericData
-    output_data
+    output_data: GenericData
 
-    def __init__(self):
-        pass
+    def __init__(self, data):
+        self.set_input_data(data)
 
     def preproc(self):
         pass
     
     def param_search(self):
         pass
-    
+
     def run_model(self):
         pass
 
@@ -30,14 +34,18 @@ class MLModel:
 
 class DBSCANPDV(MLModel):
 
-    def __init__(self, pdvs: GenericData):
-        super.__init__()
-        self.set_input_data(pdvs)
 
     def preproc(self):
-        non_scaled_pdv = self.input_data.data_cleanup()
-        transformed_pdv = _apply_transformers_for_dbscan(non_scaled_pdv)
+        self.input_data.data_cleanup()
+        self.input_data.lazyframe = self.input_data.lazyframe.drop(
+            'transacted_products', 'categoria_pdv'
+            )
+        
+        return self._apply_transformers_for_dbscan()
 
+    def param_search(self):
+        self.eps_search()
+    
     def eps_search(self):
         
         with pl.Config(set_float_precision=1):
@@ -58,7 +66,7 @@ class DBSCANPDV(MLModel):
             verbose_feature_names_out=False
         )
         transformer1.set_output(transform='polars')
-        columns_scale = [coluna for coluna in self.input_data.columns if coluna not in ['pdv', 'zipcode']]
+        columns_scale = [coluna for coluna in self.input_data.lazyframe.collect_schema() if coluna not in ['pdv', 'zipcode']]
         transformer2 = ColumnTransformer(
             transformers=[
                 ('scaled', StandardScaler(), ['zipcode']),
@@ -69,7 +77,7 @@ class DBSCANPDV(MLModel):
         )
         transformer2.set_output(transform='polars')
         return transformer2.fit_transform(
-            transformer1.fit_transform(self.input_data)
+            transformer1.fit_transform(self.input_data.lazyframe.collect())
         )
 
     def run_model(self):
@@ -84,7 +92,7 @@ class DBSCANPDV(MLModel):
             ], how='horizontal'
         )
 
-    def cluster_metrics_pdv(pdv_with_cluster: pl.DataFrame, non_scaled_df: pl.DataFrame, eps: np.floating):
+    def cluster_metrics_pdv(self, pdv_with_cluster: pl.DataFrame, non_scaled_df: pl.DataFrame, eps: np.floating):
         print(f''' Com eps {eps}, temos:
                 {
                     pdv_with_cluster

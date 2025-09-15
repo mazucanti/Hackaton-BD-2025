@@ -1,44 +1,47 @@
 import polars as pl
 
 class GenericData:
-    dataframe
+    lazyframe: pl.LazyFrame
     filepath: str
     encoding: str
     
-    def __init__(self, filepath):
-        self.filepath = filepath
-        self.encoding = encoding
+    def __init__(self, parquet_path: str) -> None:
+        self.path_parquet = parquet_path
+        self.lazyframe = self.read_file()
 
-    def read_file(self, filepath):
-        return pl.scan_parquet(filepath)
-    
-    def write_file(self, path):
-        pass
+    def read_file(self) -> pl.LazyFrame:
+        return pl.scan_parquet(self.path_parquet)
+        
+    def write_file(self, path) -> None:
+        self.lazyframe.sink_parquet(
+            path, compression='lz4'
+        )
+
     
     def data_cleanup(self):
         pass
 
-    def data_summary(self):
-        pass
+    def data_summary(self) -> None:
+        print(self.lazyframe.describe())
 
 class SKU(GenericData):
     pass
 
 class PDV(GenericData):
 
-    def __init__(self, filepath, encoding):
-        super.__init__(filepath, encoding)
-        dataframe = self.read_file(self.filepath)
+    transactions: pl.LazyFrame
 
+    def set_transactions(self, transactions):
+        self.transactions = transactions
 
-    def _prepare_pdv(pdv: pl.LazyFrame, transactions: pl.LazyFrame) -> pl.DataFrame:
-        return dataframe.with_columns(
+    def _prepare_pdv(self) -> pl.LazyFrame:
+        return self.lazyframe.with_columns(
             pl.col('zipcode').cast(pl.String).name.keep(),
             premise_dummy=pl.when(pl.col('premise').str.contains('On')).then(1).otherwise(0),
         ).with_columns(
             pl.when(pl.col('zipcode') == '8107').then(pl.lit('08107')).otherwise('zipcode').name.keep(),
         ).join(
-            transactions,
+            self.transactions,
             left_on='pdv',
             right_on='internal_store_id',
             how='inner',
@@ -49,14 +52,14 @@ class PDV(GenericData):
             'premise',
         ).group_by('pdv').agg(
             pl.col('quantity', 'gross_value', 'net_value', 'gross_profit', 'discount', 'taxes').mean(),
-            pl.col('zipcode', 'categoria_pdv').implode().first(),
+            pl.col('zipcode', 'categoria_pdv').implode().list.first(),
             pl.col('distributor_id').n_unique().alias('distributor_count'),
             pl.col('gross_profit').len().alias('transaction_count'),
             pl.col('internal_product_id').implode().alias('transacted_products'),
-        ).collect()
+        )
 
     def data_cleanup(self):
-        return _prepare_pdv()
+        self.lazyframe = self._prepare_pdv()
 
 class Transactions(GenericData):
     pass

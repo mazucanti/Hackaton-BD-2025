@@ -1,7 +1,6 @@
 # local files
 *.parquet
-my_own.ipynb
-my_own2.ipynb
+*.ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
