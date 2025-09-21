@@ -7,15 +7,25 @@ from sklearn.preprocessing import PowerTransformer, OrdinalEncoder, StandardScal
 
 class HDBS:
     model: HDBSCAN
+    entry_data: pl.LazyFrame
     prepared_data: pl.DataFrame
     transformed_X: pl.DataFrame
 
     def __init__(self, pdv, transactions, params=None) -> None:
         self.model = HDBSCAN()
+        self.entry_data = pdv
         if params:
             self.model.set_params(**params)
         self.prepared_data = self._preparation(pdv, transactions)
         self.transformed_X = self._transform(self.prepared_data)
+
+    def hardcoded_cluster_pdv(self):
+        clusters = self.fit_predict()
+        return self.entry_data.join(clusters.lazy().select('pdv', 'cluster'),
+            how='left',
+            validate='1:1',
+            on='pdv',
+        ).collect()
 
     def fit_predict(self) -> pl.DataFrame:
         numpy_X = self.transformed_X.drop('pdv').to_numpy()

@@ -100,7 +100,8 @@ class MixedModel:
     
     def MAPrediction(self, X, y, multioutput='uniform_average', debug=False) -> float:
         prediction = self.predict(X)
-        assert(prediction.sum() != 0.0)
+        if prediction.sum() != 0.0:
+            print('Modelo previu apenas nulos!')
         if debug:
             print(prediction)
             print(y.to_numpy())

@@ -27,7 +27,6 @@ class MLModel:
         self.input_data = input_data
 
 class ThompsonSampling():
-
     transactions: pl.LazyFrame
     stores: pl.LazyFrame
 
