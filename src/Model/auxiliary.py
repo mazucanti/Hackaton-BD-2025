@@ -94,15 +94,14 @@ def prepare_df_for_xgb(transactions: pl.LazyFrame | pl.DataFrame, period_to_trai
         ## the windows are in list form; we now explode them horizontally, taking care of the names
         .with_columns(
             (pl.col(list_column).list.to_struct(
-                fields=lambda k : f'{list_column}{k+1}', upper_bound=df_period
+                fields=lambda k : f'{list_column}{k+1:02d}', upper_bound=df_period
             ).struct.unnest() for list_column in columns_to_window)
         ).with_columns(
             pl.col(col).list.first().alias(col) for col in ['cluster', 'premise']
         )
         ## drop the list columns, the pdv column and, since we want to predict the quantity, drop the four last columns of the other variables that were unnested
         .drop(
-            columns_to_window,
-            grouping_column,
+            columns_to_window
         )
         ## correct the week column to be the week end of each window; this ensures the last window have 'week' as 52
         .with_columns(
@@ -113,8 +112,11 @@ def prepare_df_for_xgb(transactions: pl.LazyFrame | pl.DataFrame, period_to_trai
         X_pred = temp.clone()
     else:
         X_pred = None
-    training_data = temp.drop(((~cs.starts_with('quantity')) & cs.ends_with(*list(map(str, range(period_to_train+1, period_to_train+5))))))
-    y_columns = list(map(lambda x: 'quantity'+str(x), range(period_to_train+1, period_to_train+5)))
+    training_data = temp.drop(
+        ((~cs.starts_with('quantity')) & cs.ends_with(*list(map(lambda x: f'{x:02d}', range(period_to_train+1, period_to_train+5))))),
+        grouping_column
+        )
+    y_columns = list(map(lambda x: f'quantity{x:02d}', range(period_to_train+1, period_to_train+5)))
     return training_data.drop(y_columns), training_data.select(['week']+y_columns), X_pred
 
 def functionalize_dataset_ranges(X, y, columns_to_train):
@@ -123,7 +125,7 @@ def functionalize_dataset_ranges(X, y, columns_to_train):
     y_eq = lambda k : y.filter(pl.col('week')==k).drop('week')
     return X_eq, y_eq
 
-def train_by_week(X, y, test_last_weeks: list[int], training_period, columns_to_train, regressor_info: dict, classifier_info=None, bench=False):
+def train_by_week(X, y, X_pred, test_last_weeks: list[int], training_period, columns_to_train, regressor_info: dict, classifier_info=None, bench=False):
     X_eq, y_eq = functionalize_dataset_ranges(X, y, columns_to_train)
     n_variables = X_eq(test_last_weeks[0]).shape[1]
     estimator = MixedModel(n_variables, regressor_info, classifier_info, mix_model=True)
@@ -140,10 +142,11 @@ def train_by_week(X, y, test_last_weeks: list[int], training_period, columns_to_
                 X_eq(week), y_eq(week)
             )
             columns = X_eq(week).columns
-            X_pred = X_eq(week).drop(cs.ends_with('1', '2', '3', '4'))
+            X_pred = X_pred.drop(cs.ends_with('1', '2', '3', '4'))
+            print(X_pred.columns, 'aaaaaaaaaaaaaaaaaaaa')
             for k in range(5, 5+training_period):
                 X_pred = X_pred.with_columns(
-                    cs.ends_with(str(k)).name.map(lambda text:text.removesuffix(str(k))+str(k-4))
+                    cs.ends_with(str(k)).name.map(lambda text:text.removesuffix(f'{k:02d}')+f'{k-4:02d}')
                 )
             return estimator.predict(X_pred.select(columns))
 
@@ -223,7 +226,7 @@ def train_model(period, transactions, clusterized_pdv, final_weeks, benchmark=Fa
             'premise',
         ]
 
-    predictions = train_by_week(X, y, final_weeks, training_period=period, columns_to_train=columns_to_train,
+    predictions = train_by_week(X, y, X_pred, final_weeks, training_period=period, columns_to_train=columns_to_train,
                 regressor_info=regressor_info, classifier_info=classifier_info, bench=benchmark)
     if not benchmark:
         return predictions
