@@ -3,13 +3,13 @@ import polars.selectors as cs
 import numpy as np
 
 from src.Model.DataClasses import GenericData
-from sklearn.cluster import DBSCAN
+from sklearn.cluster import HDBSCAN
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import PowerTransformer, OrdinalEncoder, StandardScaler
+from sklearn.pipeline import Pipeline
 
 class MLModel:
     input_data: GenericData
-    output_data: GenericData
 
     def __init__(self, data):
         self.set_input_data(data)
@@ -20,20 +20,13 @@ class MLModel:
     def param_search(self):
         pass
 
-    def run_model(self):
+    def fit_transform(self):
         pass
 
     def set_input_data(self, input_data: GenericData):
         self.input_data = input_data
 
-    def generate_output(self):
-        self.output_data = self.run_model()
-
-    def get_output_data(self):
-        return self.output_data
-
 class DBSCANPDV(MLModel):
-
 
     def preproc(self):
         self.input_data.data_cleanup()
@@ -47,14 +40,13 @@ class DBSCANPDV(MLModel):
         self.eps_search()
     
     def eps_search(self):
-        
         with pl.Config(set_float_precision=1):
             for eps in np.arange(0.1, 2, 0.2):
-                cluster_metrics_pdv(
+                self.cluster_metrics_pdv(
                     pdv_with_cluster=train_dbscan_pdv(
-                        transformed_pdv, eps=eps, min_samples=100
+                        self.preproc(), eps=eps, min_samples=100
                     ),
-                    non_scaled_df=non_scaled_pdv,
+                    non_scaled_df=self.input_data.data_cleanup(),
                     eps=eps
                 )
 
@@ -80,17 +72,21 @@ class DBSCANPDV(MLModel):
             transformer1.fit_transform(self.input_data.lazyframe.collect())
         )
 
-    def run_model(self):
-        return train_dbscan_pdv(transformed_pdv, eps=0.9, min_samples=100)
-    
-    def train_dbscan_pdv(self, X_transformed: pl.DataFrame, eps: np.floating, min_samples: int) -> pl.DataFrame:
+    def train_hdbscan_pdv(self, X_transformed: pl.DataFrame, cluster_size: tuple[int, int], min_samples: int) -> pl.DataFrame:
         numpy_X = X_transformed.drop('pdv').to_numpy()
-        dbscan = DBSCAN(eps=eps, min_samples=min_samples, n_jobs=-1)
+        hdbscan = HDBSCAN(min_cluster_size=cluster_size[0], max_cluster_size=cluster_size[1], min_samples=min_samples, n_jobs=-1)
         return pl.concat([
             X_transformed,
-            pl.DataFrame({'cluster':dbscan.fit_predict(numpy_X, sample_weight=None)})
+            pl.DataFrame({'cluster':hdbscan.fit_predict(numpy_X)})
             ], how='horizontal'
         )
+    
+    def run_model(self, cluster_size):
+        return self.train_hdbscan_pdv(
+            self.preproc(),
+            cluster_size,
+            min_samples=100
+            )
 
     def cluster_metrics_pdv(self, pdv_with_cluster: pl.DataFrame, non_scaled_df: pl.DataFrame, eps: np.floating):
         print(f''' Com eps {eps}, temos:
@@ -113,6 +109,4 @@ class DBSCANPDV(MLModel):
                     )
                 }\n\n
                 '''
-        )
-
-    
+        )   
