@@ -138,17 +138,21 @@ def train_by_week(X, y, X_pred, test_last_weeks: list[int], training_period, col
             )
         else:
             assert len(test_last_weeks)==1, 'You sould pass only the final week of the training period.'
+
             estimator.fit(
                 X_eq(week), y_eq(week)
             )
             columns = X_eq(week).columns
+            pdvs = X_pred.filter(pl.col('week')==week).drop('week').select('internal_store_id')
             X_pred = X_pred.drop(cs.ends_with('1', '2', '3', '4'))
-            print(X_pred.columns, 'aaaaaaaaaaaaaaaaaaaa')
             for k in range(5, 5+training_period):
                 X_pred = X_pred.with_columns(
-                    cs.ends_with(str(k)).name.map(lambda text:text.removesuffix(f'{k:02d}')+f'{k-4:02d}')
+                    cs.ends_with(f'{k:02d}').name.map(lambda text:text.removesuffix(f'{k:02d}')+f'{k-4:02d}')
                 )
-            return estimator.predict(X_pred.select(columns))
+            return pl.concat([
+                pdvs,
+                pl.DataFrame(estimator.predict(X_pred.filter(pl.col('week')==week).select(columns)))
+            ], how='horizontal')
 
 def fit_and_score(estimator: MixedModel, week, X_train: pl.DataFrame, y_train, X_test, y_test, period):
     (n_samples, n_variables), variable_names, output_names = X_train.shape, X_train.columns, y_train.columns
