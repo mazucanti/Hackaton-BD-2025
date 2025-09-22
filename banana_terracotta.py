@@ -17,7 +17,7 @@ def main():
 
     reference_weeks = [52]
     benchmark = False
-    for lim in [0.8, 0.9, 0.986, 0.986, 0.99]:
+    for k, lim in enumerate([0.8, 0.9, 0.986, 0.986, 0.99]):
         prediction = train_model(
             period=8,
             transactions=transacoes,
