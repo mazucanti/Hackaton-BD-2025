@@ -17,7 +17,15 @@ def main():
 
     reference_weeks = [52]
     benchmark = False
-    prediction = train_model(period=8, transactions=transacoes, clusterized_pdv=pdv_clusterizado.lazy(), final_weeks=reference_weeks, benchmark=benchmark)
+    for k, lim in enumerate([0.8, 0.9, 0.986, 0.986, 0.99]):
+        prediction = train_model(
+            period=8,
+            transactions=transacoes,
+            clusterized_pdv=pdv_clusterizado.lazy(),
+            final_weeks=reference_weeks,
+            benchmark=benchmark,
+            threshold=lim
+        )
 
 
 if __name__ == '__main__':
