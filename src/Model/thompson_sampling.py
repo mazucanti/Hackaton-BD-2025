@@ -53,7 +53,6 @@ class ThompsonSampling:
 
         # for test in
         for week in range(1,53):
-            print(f'{week}/52')
             random_val = np.random.uniform()
                     
             probability_table = probability_table.lazy().join(

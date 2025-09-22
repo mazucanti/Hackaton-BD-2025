@@ -25,32 +25,48 @@ def main():
 
     reference_weeks = [52]
     benchmark = False
-    for k, lim in enumerate([0.8, 0.9, 0.986, 0.986, 0.99]):
-        prediction = train_model(
-            period=8,
-            transactions=transacoes,
-            clusterized_pdv=pdv_clusterizado.lazy(),
-            final_weeks=reference_weeks,
-            benchmark=benchmark,
-            threshold=lim
-        )
-    
+    lim = 0.986
+    prediction = train_model(
+        period=8,
+        transactions=transacoes,
+        clusterized_pdv=pdv_clusterizado.lazy(),
+        final_weeks=reference_weeks,
+        benchmark=benchmark,
+        threshold=lim
+    )
+
     result = prob.lazy().cast(
-        {
-            'pdv': pl.Categorical
-        }
+        {'pdv': pl.Categorical}
     ).join(
         prediction.lazy(), how='right', left_on='pdv', right_on='internal_store_id'
+    ).filter(
+        pl.sum_horizontal(cs.starts_with('column')) > 0
     ).with_columns(
         column_0=pl.col('scaled_prob')*pl.col('column_0'),
         column_1=pl.col('scaled_prob')*pl.col('column_1'),
         column_2=pl.col('scaled_prob')*pl.col('column_2'),
-        column_3=pl.col('scaled_prob')*pl.col('column_3')
-    ).drop('scaled_prob').explode(['column_0', 'column_1', 'column_2', 'column_3', 'internal_product_id'])
+        column_3=pl.col('scaled_prob')*pl.col('column_3'),
+        column_4=pl.col('scaled_prob')*pl.col('column_4'),
+    ).rename({
+        'column_0':'1',
+        'column_1':'2',
+        'column_2':'3',
+        'column_3':'4',
+        'column_4':'5',
+        'internal_store_id':'pdv',
+        'internal_product_id':'produto'
+    }).drop('scaled_prob').explode(
+        ['1', '2', '3', '4', '5', 'produto']
+    ).unpivot(['1', '2', '3', '4', '5'], index=['pdv', 'produto']).rename({
+        'variable':'semana',
+        'value':'quantidade',
+    }).with_columns(
+        pl.col('quantidade').floor().cast(pl.Int32)
+    ).filter(
+        pl.col('quantidade')>0
+    ).select('semana', 'pdv', 'produto', 'quantidade')
 
-    print(result.unpivot(cs.starts_with('column')).collect())
-
-
+    result.sink_csv(Path('output/pred.csv'), separator=';')
 
 if __name__ == '__main__':
     main()
