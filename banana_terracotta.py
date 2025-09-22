@@ -18,7 +18,6 @@ def main():
     reference_weeks = [52]
     benchmark = False
     prediction = train_model(period=8, transactions=transacoes, clusterized_pdv=pdv_clusterizado.lazy(), final_weeks=reference_weeks, benchmark=benchmark)
- 
 
 
 if __name__ == '__main__':

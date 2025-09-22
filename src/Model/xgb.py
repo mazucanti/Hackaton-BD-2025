@@ -1,14 +1,13 @@
 import numpy as np
 import polars as pl
 
-from sklearn.preprocessing import PowerTransformer, OrdinalEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
-from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, make_scorer, median_absolute_error
-from sklearn.multioutput import MultiOutputRegressor, MultiOutputClassifier, RegressorChain
+from sklearn.metrics import mean_absolute_error, make_scorer, median_absolute_error
+from sklearn.multioutput import MultiOutputRegressor, MultiOutputClassifier
 from sklearn.ensemble import HistGradientBoostingClassifier
 from skopt import BayesSearchCV
 from skopt.space import Real, Categorical, Integer
-from xgboost.sklearn import XGBRegressor, XGBRFRegressor
+from xgboost.sklearn import XGBRegressor
 
 def MAPE_SCORE(y, pred):
     return np.mean(np.abs(y - pred)/np.maximum(y, np.ones_like(y)))
@@ -62,7 +61,7 @@ class MixedModel:
     
     def fit(self, X, y: pl.DataFrame):
         if self.classifier:
-            self.classifier.fit(X, (y>0).cast(pl.Int8))
+            self.classifier.fit(X, (y>0).cast(pl.Int8).to_numpy())
         self.regressor.fit(X, y.to_numpy())
 
 
@@ -100,7 +99,7 @@ class MixedModel:
     
     def MAPrediction(self, X, y, multioutput='uniform_average', debug=False) -> float:
         prediction = self.predict(X)
-        if prediction.sum() != 0.0:
+        if prediction.sum() == 0.0:
             print('Modelo previu apenas nulos!')
         if debug:
             print(prediction)
@@ -121,15 +120,16 @@ class MixedModel:
             case 'multi_xgb':
                 return BayesSearchCV(
                     estimator=MultiOutputRegressor(XGBRegressor(
-                        missing=np.nan,
+                        # missing=np.nan,
                         subsample=0.9,
                         random_state=411,
                         n_jobs=8,
-                        objective='reg:squarederror'
+                        objective='reg:squarederror',
+                        booster='gbtree',
                     )),
                     search_spaces= {
                         # 'estimator__base_score': None,
-                        'estimator__booster': Categorical(['gbtree', 'dart']),
+                        # 'estimator__booster': Categorical(['gbtree', 'dart']),
                         # 'estimator__callbacks': None,
                         'estimator__colsample_bylevel': Real(0.4, 1),
                         'estimator__colsample_bynode': Real(0.4, 1),

@@ -155,10 +155,11 @@ def train_by_week(X, y, X_pred, test_last_weeks: list[int], training_period, col
             ], how='horizontal')
 
 def fit_and_score(estimator: MixedModel, week, X_train: pl.DataFrame, y_train, X_test, y_test, period):
-    (n_samples, n_variables), variable_names, output_names = X_train.shape, X_train.columns, y_train.columns
-    print((n_samples, n_variables), variable_names, output_names)
+    # (n_samples, n_variables), variable_names, output_names = X_train.shape, X_train.columns, y_train.columns
+    # print((n_samples, n_variables), variable_names, output_names)
 
     estimator.fit(X_train, y_train)
+    print(estimator.best_params_())
     print(
         f'MAE no treino: {estimator.score(X_train, y_train):.2f} treinando com semana {week-8-period+1} a semana {week-8} prevendo {week-7} a {week-4}')
     print(
@@ -176,7 +177,7 @@ def make_multi_regressor():
     return MultiOutputRegressor(XGBRegressor())
 
 def train_model(period, transactions, clusterized_pdv, final_weeks, benchmark=False):
-    print('------------------------------------------------------------------------------------------------------------------------------\nperiod size:', period)
+    print('Treinando com tamanho de periodo:', period)
     grouping_column = 'internal_store_id'
     preprocessed = group_transactions_by_week_and(grouping_column, transactions, clusterized_pdv)
     X, y, X_pred = prepare_df_for_xgb(preprocessed, period_to_train=period, grouping_column=grouping_column, benchmark=benchmark)
@@ -185,35 +186,33 @@ def train_model(period, transactions, clusterized_pdv, final_weeks, benchmark=Fa
         'Model': make_multi_regressor,
         'scaler': StandardScaler,
         'params': {
-            'estimator__booster': 'dart',
-            'estimator__colsample_bylevel': 0.6793,
-            'estimator__colsample_bynode': 0.918,
-            'estimator__colsample_bytree': 0.492,
+            'estimator__colsample_bylevel': 1.0,
+            'estimator__colsample_bynode': 0.4,
+            'estimator__colsample_bytree': 0.40916614469997564,
             'estimator__eval_metric': 'rmse',
-            'estimator__gamma': 2.988191101963424,
-            'estimator__importance_type': 'gain',
-            'estimator__learning_rate': 0.305,
-            'estimator__max_delta_step': 4.12,
-            'estimator__max_depth': 4,
-            'estimator__max_leaves': 296,
-            'estimator__n_estimators': 300,
-            'estimator__reg_alpha': 1.92,
-            'estimator__reg_lambda': 1.86,
+            'estimator__gamma': 0.01,
+            'estimator__importance_type': 'weight',
+            'estimator__learning_rate': 1.0,
+            'estimator__max_delta_step': 7.541515576689044,
+            'estimator__max_depth': 6,
+            'estimator__max_leaves': 20,
+            'estimator__n_estimators': 20,
+            'estimator__reg_alpha': 0.11249955446334554,
+            'estimator__reg_lambda': 0.39595472784814545},
         }
-    }
     classifier_info = {
         'Model': make_multi_classifier,
         'scaler': StandardScaler,
-        'threshold': 0.9,
+        'threshold': 0.986,
         'params': {
-            'estimator__l2_regularization': 0.2,
-            'estimator__learning_rate': 0.219,
-            'estimator__max_bins': 16,
-            'estimator__max_depth': 10,
+            'estimator__l2_regularization': 0.1,
+            'estimator__learning_rate': 0.09080085983910437,
+            'estimator__max_bins': 48,
+            'estimator__max_depth': 2,
             'estimator__max_features': 0.1,
-            'estimator__max_iter': 50,
-            'estimator__max_leaf_nodes': 81,
-            'estimator__min_samples_leaf': 100,
+            'estimator__max_iter': 70,
+            'estimator__max_leaf_nodes': 39,
+            'estimator__min_samples_leaf': 10,
             'estimator__validation_fraction': 0.1,
             'estimator__categorical_features': [0, 1],
         }
@@ -221,11 +220,11 @@ def train_model(period, transactions, clusterized_pdv, final_weeks, benchmark=Fa
     columns_to_train = [
             'quantity',
             'cluster',
-            'gross_value',
+            # 'gross_value',
             'net_value',
             'gross_profit',
-            'discount',
-            'taxes',
+            # 'discount',
+            # 'taxes',
             'different_products',
             'premise',
         ]
