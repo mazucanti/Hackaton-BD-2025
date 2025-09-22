@@ -59,7 +59,7 @@ def group_transactions_by_week_and(grouping_column, transactions: pl.LazyFrame, 
                     [grouping_column, 'week']
                 ).profile(show_plot=profile)[0]
 
-def prepare_df_for_xgb(transactions: pl.LazyFrame | pl.DataFrame, period_to_train=8, profile=False, grouping_column='internal_store_id', benchmark=False) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame | None]:
+def prepare_df_for_xgb(transactions: pl.LazyFrame | pl.DataFrame, period_to_train=8, profile=False, grouping_column='internal_store_id', benchmark=False, weeks_predict=4) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame | None]:
     transactions = transactions.lazy()
     ## dictionary containing pdv: most common product (after grouping by week)
     product_by_store = dict(
@@ -68,7 +68,7 @@ def prepare_df_for_xgb(transactions: pl.LazyFrame | pl.DataFrame, period_to_trai
         ).collect().iter_rows()
     )
     columns_to_window = ['quantity', 'gross_value', 'net_value', 'gross_profit', 'discount', 'taxes', 'product_diversity']
-    df_period = period_to_train + 4 ## 4 weeks_to_predict
+    df_period = period_to_train + weeks_predict
     temp = (
         ## create dataframe with the cartesian product of pdv's and 1-52 weeks
         pl.LazyFrame({
@@ -113,10 +113,10 @@ def prepare_df_for_xgb(transactions: pl.LazyFrame | pl.DataFrame, period_to_trai
     else:
         X_pred = None
     training_data = temp.drop(
-        ((~cs.starts_with('quantity')) & cs.ends_with(*list(map(lambda x: f'{x:02d}', range(period_to_train+1, period_to_train+5))))),
+        ((~cs.starts_with('quantity')) & cs.ends_with(*list(map(lambda x: f'{x:02d}', range(period_to_train+1, period_to_train+1+weeks_predict))))),
         grouping_column
         )
-    y_columns = list(map(lambda x: f'quantity{x:02d}', range(period_to_train+1, period_to_train+5)))
+    y_columns = list(map(lambda x: f'quantity{x:02d}', range(period_to_train+1, period_to_train+1+weeks_predict)))
     return training_data.drop(y_columns), training_data.select(['week']+y_columns), X_pred
 
 def functionalize_dataset_ranges(X, y, columns_to_train):
@@ -125,7 +125,7 @@ def functionalize_dataset_ranges(X, y, columns_to_train):
     y_eq = lambda k : y.filter(pl.col('week')==k).drop('week')
     return X_eq, y_eq
 
-def train_by_week(X, y, X_pred, test_last_weeks: list[int], training_period, columns_to_train, regressor_info: dict, classifier_info=None, bench=False):
+def train_by_week(X, y, X_pred, test_last_weeks: list[int], training_period, columns_to_train, regressor_info: dict, classifier_info=None, bench=False,  weeks_predict=4):
     X_eq, y_eq = functionalize_dataset_ranges(X, y, columns_to_train)
     n_variables = X_eq(test_last_weeks[0]).shape[1]
     estimator = MixedModel(n_variables, regressor_info, classifier_info, mix_model=True)
@@ -134,7 +134,7 @@ def train_by_week(X, y, X_pred, test_last_weeks: list[int], training_period, col
         if bench:
             print('# week:', week)
             fit_and_score(
-                estimator, week, X_train=X_eq(week-4), y_train=y_eq(week-4), X_test=X_eq(week), y_test=y_eq(week), period=training_period
+                estimator, week, X_train=X_eq(week-weeks_predict), y_train=y_eq(week-weeks_predict), X_test=X_eq(week), y_test=y_eq(week), period=training_period, weeks_predict=weeks_predict
             )
         else:
             assert len(test_last_weeks)==1, 'You sould pass only the final week of the training period.'
@@ -144,29 +144,29 @@ def train_by_week(X, y, X_pred, test_last_weeks: list[int], training_period, col
             )
             columns = X_eq(week).columns
             pdvs = X_pred.filter(pl.col('week')==week).drop('week').select('internal_store_id')
-            X_pred = X_pred.drop(cs.ends_with('1', '2', '3', '4'))
-            for k in range(5, 5+training_period):
+            X_pred = X_pred.drop(cs.ends_with(*list(map(str, range(1, weeks_predict+1)))))
+            for k in range(weeks_predict+1, weeks_predict+1+training_period):
                 X_pred = X_pred.with_columns(
-                    cs.ends_with(f'{k:02d}').name.map(lambda text:text.removesuffix(f'{k:02d}')+f'{k-4:02d}')
+                    cs.ends_with(f'{k:02d}').name.map(lambda text:text.removesuffix(f'{k:02d}')+f'{k-weeks_predict:02d}')
                 )
             return pl.concat([
                 pdvs,
                 pl.DataFrame(estimator.predict(X_pred.filter(pl.col('week')==week).select(columns)))
             ], how='horizontal')
 
-def fit_and_score(estimator: MixedModel, week, X_train: pl.DataFrame, y_train, X_test, y_test, period):
+def fit_and_score(estimator: MixedModel, week, X_train: pl.DataFrame, y_train, X_test, y_test, period, weeks_predict=4):
     # (n_samples, n_variables), variable_names, output_names = X_train.shape, X_train.columns, y_train.columns
     # print((n_samples, n_variables), variable_names, output_names)
 
     estimator.fit(X_train, y_train)
     print(estimator.best_params_())
     print(
-        f'MAE no treino: {estimator.score(X_train, y_train):.2f} treinando com semana {week-8-period+1} a semana {week-8} prevendo {week-7} a {week-4}')
+        f'MAE no treino: {estimator.score(X_train, y_train):.2f} treinando com semana {week-4-weeks_predict-period+1} a semana {week-4-weeks_predict} prevendo {week-2*weeks_predict+1} a {week-weeks_predict}')
     print(
         f'MAPE do anterior: {estimator.MAPrediction(X_train, y_train, multioutput='uniform_average', debug=False)}')
     print('--------------')
     print(
-        f'MAE no teste {estimator.score(X_test, y_test):.2f} modelo acima prevendo {week-3} a {week}')
+        f'MAE no teste {estimator.score(X_test, y_test):.2f} modelo acima prevendo {week-weeks_predict+1} a {week}')
     print(
         f'MAPE do anterior: {estimator.MAPrediction(X_test, y_test, multioutput='uniform_average', debug=False)}')
     print('-----------------------')
@@ -176,11 +176,12 @@ def make_multi_classifier():
 def make_multi_regressor():
     return MultiOutputRegressor(XGBRegressor())
 
-def train_model(period, transactions, clusterized_pdv, final_weeks, benchmark=False):
+def train_model(period, transactions, clusterized_pdv, final_weeks, benchmark=False, threshold=0.5):
     print('Treinando com tamanho de periodo:', period)
     grouping_column = 'internal_store_id'
+    weeks_to_predict = 5
     preprocessed = group_transactions_by_week_and(grouping_column, transactions, clusterized_pdv)
-    X, y, X_pred = prepare_df_for_xgb(preprocessed, period_to_train=period, grouping_column=grouping_column, benchmark=benchmark)
+    X, y, X_pred = prepare_df_for_xgb(preprocessed, period_to_train=period, grouping_column=grouping_column, benchmark=benchmark, weeks_predict=weeks_to_predict)
 
     regressor_info = {
         'Model': make_multi_regressor,
@@ -203,7 +204,7 @@ def train_model(period, transactions, clusterized_pdv, final_weeks, benchmark=Fa
     classifier_info = {
         'Model': make_multi_classifier,
         'scaler': StandardScaler,
-        'threshold': 0.986,
+        'threshold': threshold,
         'params': {
             'estimator__l2_regularization': 0.1,
             'estimator__learning_rate': 0.09080085983910437,
@@ -230,6 +231,6 @@ def train_model(period, transactions, clusterized_pdv, final_weeks, benchmark=Fa
         ]
 
     predictions = train_by_week(X, y, X_pred, final_weeks, training_period=period, columns_to_train=columns_to_train,
-                regressor_info=regressor_info, classifier_info=classifier_info, bench=benchmark)
+                regressor_info=regressor_info, classifier_info=classifier_info, bench=benchmark, weeks_predict=weeks_to_predict)
     if not benchmark:
         return predictions
