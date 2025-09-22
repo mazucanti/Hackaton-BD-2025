@@ -13,5 +13,3 @@ Alternatively, one can run `pip-compile --cert=None --client-cert=None --index-u
 ## Running the model
 
 To run the model, first put the three parquet files in the `data` folder, then you need to execute `python3 -m banana_terracota`. After completion, check the folder `output` to se the file `result.csv` which contains the result of the model. 
-
-The model is already trained and saved to file, but you can train your own model using `<AAAAAAAAAAAAAAAAAAAAAAAAAAA>`

@@ -7,6 +7,7 @@ class ThompsonSampling:
 
     transactions: pl.LazyFrame
     stores: pl.LazyFrame
+    prob: pl.LazyFrame
 
     def __init__(self, trans_path, store_path):
         self.transactions = pl.scan_parquet(trans_path)
@@ -52,7 +53,7 @@ class ThompsonSampling:
 
         # for test in
         for week in range(1,53):
-            print(week)
+            print(f'{week}/52')
             random_val = np.random.uniform()
                     
             probability_table = probability_table.lazy().join(
@@ -81,4 +82,13 @@ class ThompsonSampling:
                     )
                 )
             ).drop('quantity').collect()
-        return probability_table
+        self.prob = probability_table
+    
+    def scale_probs(self):
+        return self.prob.lazy().group_by('categoria_pdv').agg(
+            pl.col('internal_product_id', 'probability').implode()
+        ).with_columns(
+            scaled_prob=pl.col('probability').map_elements(lambda x: list(np.array(x)/sum(np.array(x))), return_dtype=list[float])
+        ).join(
+            self.stores, on='categoria_pdv', how='inner', validate='1:m'
+            ).drop('premise', 'zipcode')
